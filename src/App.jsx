@@ -111,6 +111,20 @@ function App() {
   const [bookingDetails, setBookingDetails] = useState(null);
   const [isAdminView, setIsAdminView] = useState(false);
 
+  // Check localStorage for mock user session on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('eventsphere_mock_user');
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        setCurrentUser(parsed);
+        if (parsed.isAdmin) setIsAdminView(true);
+      } catch (e) {
+        console.error("Failed to parse saved mock user:", e);
+      }
+    }
+  }, []);
+
   // Fetch and seed events from Firestore
   useEffect(() => {
     const fetchEvents = async () => {
@@ -120,7 +134,11 @@ function App() {
           // Seed the database with initialEvents
           const newEvents = [];
           for (const ev of initialEvents) {
-            await setDoc(doc(db, "ticvedika_events", String(ev.id)), ev);
+            try {
+              await setDoc(doc(db, "ticvedika_events", String(ev.id)), ev);
+            } catch (writeErr) {
+              console.warn("Could not seed event to Firestore, will use local data fallback:", writeErr);
+            }
             newEvents.push(ev);
           }
           setEvents(newEvents.sort((a, b) => a.id - b.id));
@@ -129,7 +147,8 @@ function App() {
           setEvents(fetchedEvents.sort((a, b) => a.id - b.id));
         }
       } catch (error) {
-        console.error("Error fetching events:", error);
+        console.error("Error fetching events, falling back to local mock data:", error);
+        setEvents(initialEvents);
       }
     };
     fetchEvents();
@@ -154,8 +173,11 @@ function App() {
           setCurrentUser({ uid: user.uid, email: user.email, isAdmin: false, error: "Database offline" });
         }
       } else {
-        setCurrentUser(null);
-        setIsAdminView(false);
+        // Only reset if we are not in mock session mode
+        if (!localStorage.getItem('eventsphere_mock_user')) {
+          setCurrentUser(null);
+          setIsAdminView(false);
+        }
       }
     });
 
@@ -176,7 +198,8 @@ function App() {
           setBookings(bookingsList);
         } catch (error) {
           console.error("Firestore connection error when fetching admin data:", error);
-          setUsers([]);
+          // Set some fallback data for admin demo if Firebase is offline
+          setUsers(initialUsers.map(u => ({ id: u.id, name: u.name, email: u.email, isAdmin: u.isAdmin })));
           setBookings([]);
         }
       }
@@ -187,23 +210,62 @@ function App() {
   const selectedEvent = events.find(e => e.id === selectedEventId);
 
   const handleLogin = async (email, password) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      localStorage.removeItem('eventsphere_mock_user');
+    } catch (fbError) {
+      console.warn("Firebase Auth failed, checking local initialUsers database:", fbError);
+      const matched = initialUsers.find(u => u.email === email && u.password === password);
+      if (matched) {
+        const loggedUser = {
+          uid: `mock_${matched.id}`,
+          email: matched.email,
+          name: matched.name,
+          isAdmin: matched.isAdmin
+        };
+        localStorage.setItem('eventsphere_mock_user', JSON.stringify(loggedUser));
+        setCurrentUser(loggedUser);
+        if (loggedUser.isAdmin) setIsAdminView(true);
+      } else {
+        throw fbError;
+      }
+    }
   };
 
   const handleRegister = async (newUser) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, newUser.email, newUser.password);
-    const user = userCredential.user;
-
-    // Store extra user metadata in Firestore
-    await setDoc(doc(db, "ticvedika_users", user.uid), {
-      name: newUser.name,
-      email: newUser.email,
-      isAdmin: newUser.email.toLowerCase() === 'admin@aahvana.com'
-    });
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, newUser.email, newUser.password);
+      const user = userCredential.user;
+      await setDoc(doc(db, "ticvedika_users", user.uid), {
+        name: newUser.name,
+        email: newUser.email,
+        isAdmin: newUser.email.toLowerCase() === 'admin@aahvana.com'
+      });
+      localStorage.removeItem('eventsphere_mock_user');
+    } catch (fbError) {
+      console.warn("Firebase registration failed, using local registration:", fbError);
+      const mockId = Math.random().toString(36).substr(2, 9);
+      const registeredUser = {
+        uid: `mock_${mockId}`,
+        name: newUser.name,
+        email: newUser.email,
+        isAdmin: newUser.email.toLowerCase() === 'admin@aahvana.com'
+      };
+      localStorage.setItem('eventsphere_mock_user', JSON.stringify(registeredUser));
+      setCurrentUser(registeredUser);
+      if (registeredUser.isAdmin) setIsAdminView(true);
+    }
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.warn("Firebase signout failed, clearing local mock user:", e);
+    }
+    localStorage.removeItem('eventsphere_mock_user');
+    setCurrentUser(null);
+    setIsAdminView(false);
     setSelectedEventId(null);
     setBookingStage('list');
   };
