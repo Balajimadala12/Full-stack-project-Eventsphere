@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://Balajimadala12.github.io/Full-stack-project-event-sphere",
+  "homepage": "https://Balajimadala12.github.io/Full-stack-project-Eventsphere",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
