@@ -99,7 +99,7 @@ const initialUsers = [
 import ProgressStepper from './components/ProgressStepper';
 
 function App() {
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState(initialEvents);
   const [users, setUsers] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -281,22 +281,22 @@ function App() {
     
     try {
       await setDoc(doc(db, "ticvedika_events", String(newId)), eventToSave);
-      setEvents([...events, eventToSave]);
     } catch(e) {
       console.error("Failed to add event to Firestore", e);
     }
+    setEvents([...events, eventToSave]);
   };
 
   const handleDeleteEvent = async (id) => {
     try {
       await deleteDoc(doc(db, "ticvedika_events", String(id)));
-      setEvents(events.filter(e => e.id !== id));
-      if (selectedEventId === id) {
-        setSelectedEventId(null);
-        setBookingStage('list');
-      }
     } catch(e) {
       console.error("Failed to delete event from Firestore", e);
+    }
+    setEvents(events.filter(e => e.id !== id));
+    if (selectedEventId === id) {
+      setSelectedEventId(null);
+      setBookingStage('list');
     }
   };
 
